@@ -44,6 +44,7 @@ import {
   replaceActiveFake
 } from './strategy-updater'
 import { getDataDir, getBinDir, getListsDir, getStrategiesDir, getUtilsDir, getBundledAssetsDir } from './paths'
+import { ensureIPSetForTelegram } from './ipset-ensure'
 import { listUserLists, readUserList, writeUserList } from './user-lists'
 import { checkBypassTarget, checkCustomBypassTarget } from './bypass-check'
 import { checkAppUpdates, downloadAppUpdate, getAppUpdateState, getAppVersion, installAppUpdate } from './app-updater'
@@ -150,6 +151,23 @@ export function ensureTgProxySecret(): AppSettings {
 
 function getTgProxyStatusPayload(): { status: 'running' | 'stopped' | 'error'; stats: ReturnType<typeof getTgProxyStats> } {
   return getTgProxyStatus()
+}
+
+/**
+ * The proxy dials Telegram DCs by IP, which only the IPSet can match. Make sure
+ * a usable list is loaded before the proxy starts (see `ipset-ensure`).
+ */
+async function prepareIPSetForTelegram(): Promise<void> {
+  try {
+    await ensureIPSetForTelegram({
+      listsDir: getListsDir(),
+      onLog: (level, text) => sendLog('tg-proxy', level, text)
+    })
+  } catch (e) {
+    // Never block the proxy on a list problem — it may still reach Telegram
+    // through the CF path.
+    sendLog('tg-proxy', 'warn', `IPSet check failed: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300))
+  }
 }
 
 /**
@@ -678,6 +696,7 @@ export function registerIpcHandlers(): void {
   // -- Built-in Telegram MTProto→WS proxy (src/main/tg-proxy.ts) --
   ipcMain.handle(IPC.tgProxyStart, async () => {
     const settings = ensureTgProxySecret()
+    await prepareIPSetForTelegram()
     sendLog('tg-proxy', 'info', `Starting TG proxy on ${settings.tgProxy.host}:${settings.tgProxy.port}...`)
     const bound = await startTgProxy(tgStartOptsFromSettings(settings.tgProxy))
     saveSettings({ tgProxy: { ...settings.tgProxy, enabled: true, port: bound.port } })
@@ -697,6 +716,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC.tgProxyRestart, async () => {
     const settings = ensureTgProxySecret()
+    await prepareIPSetForTelegram()
     await stopTgProxy()
     const bound = await startTgProxy(tgStartOptsFromSettings(settings.tgProxy))
     saveSettings({ tgProxy: { ...settings.tgProxy, enabled: true, port: bound.port } })

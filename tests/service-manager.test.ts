@@ -139,6 +139,21 @@ describe('getIPSetMode / setIPSetMode', () => {
     expect(() => setIPSetMode(dir, 'loaded')).toThrow()
     fs.rmSync(dir, { recursive: true, force: true })
   })
+
+  it('keeps the list recoverable when switching loaded -> any', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zapret-ipset-'))
+    const list = path.join(dir, 'ipset-all.txt')
+    const backup = path.join(dir, 'ipset-all.txt.backup')
+    fs.writeFileSync(list, '1.1.1.0/24\n', 'utf8')
+
+    setIPSetMode(dir, 'any')
+
+    expect(getIPSetMode(dir)).toBe('any')
+    expect(fs.readFileSync(backup, 'utf8')).toBe('1.1.1.0/24\n')
+    setIPSetMode(dir, 'loaded')
+    expect(fs.readFileSync(list, 'utf8')).toBe('1.1.1.0/24\n')
+    fs.rmSync(dir, { recursive: true, force: true })
+  })
 })
 
 describe('getGameFilterMode / setGameFilterMode', () => {

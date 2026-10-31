@@ -10,6 +10,7 @@ import { ensureDataDirSeeded, getDataDir, getAppLogPath, getTgProxyLogPath, getB
 import { initLogger, setLogsEnabled, isLogsEnabled, clearBufferedLogs, info, warn, err, onLog, getBufferedLogs } from './logger'
 import type { LogLine } from '../shared/types'
 import { setupAutoUpdater } from './app-updater'
+import { ensureIPSetForTelegram } from './ipset-ensure'
 import { registerIpcHandlers, listStrategies, stopAllTesting } from './ipc-handlers'
 import { setupTray, getTrayLabels, destroyTray, type TrayContext } from './tray'
 import { loadSettings, saveSettings, onSettingsChanged } from './settings'
@@ -921,11 +922,17 @@ void acquireSingleInstanceLock().then((held) => {
     try {
       const s = loadSettings()
       const handover = process.argv.includes(TG_PROXY_RESTART_ARG)
-      if (handover) {
-        info('tg-proxy', 'Admin handover detected — restarting TG proxy.')
-        void startTgProxyWithRetry('admin-handover')
-      } else if (s.tgProxy.autoStart) {
-        void startTgProxyWithRetry('autoStart')
+      if (handover || s.tgProxy.autoStart) {
+        if (handover) info('tg-proxy', 'Admin handover detected — restarting TG proxy.')
+        // The proxy dials Telegram by IP, which needs the IPSet list — load it
+        // before the first DC connection, not after a timeout.
+        void (async () => {
+          await ensureIPSetForTelegram({
+            listsDir: getListsDir(),
+            onLog: (level, text) => (level === 'warn' ? warn : info)('tg-proxy', text)
+          }).catch(() => undefined)
+          await startTgProxyWithRetry(handover ? 'admin-handover' : 'autoStart')
+        })()
       }
     } catch {
       /* best-effort */

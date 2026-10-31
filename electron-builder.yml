@@ -70,6 +70,6 @@ rpm:
     - polkit
 publish:
   provider: github
-  owner: AvenCores
+  owner: createprojectile
   repo: zapret-gui-nodejs
   releaseType: release

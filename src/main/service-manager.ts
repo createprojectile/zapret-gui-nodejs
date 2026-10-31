@@ -427,6 +427,13 @@ export function setIPSetMode(listsDir: string, mode: IPSetMode): void {
     }
     fs.writeFileSync(listFile, '203.0.113.113/32\n', 'utf8')
   } else if (mode === 'any') {
+    // Keep the real list in `.backup` (mirrors the `none` branch): an empty
+    // list means "every IP matches" to nfqws, so without the backup the
+    // downloaded data would be lost and "loaded" could only be restored by
+    // fetching the list again.
+    if (fs.existsSync(listFile) && !fs.existsSync(backupFile)) {
+      if (fs.statSync(listFile).size > 0) fs.renameSync(listFile, backupFile)
+    }
     fs.writeFileSync(listFile, '', 'utf8')
   } else {
     if (fs.existsSync(backupFile)) {
